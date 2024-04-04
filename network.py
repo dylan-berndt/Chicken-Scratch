@@ -122,9 +122,11 @@ def cycleData(x_train, y_train):
     return x_cycled, y_cycled
 
 
-def loadTransformerData(path):
+def loadTransformerData(path, singular=False):
     prompts, responses = [], []
     tweets = 0
+
+    seenIds = []
     
     files = os.listdir(path)
     for fileName in files:
@@ -134,16 +136,19 @@ def loadTransformerData(path):
         fileData = json.load(file)
 
         for key, tweet in fileData.items():
+            if key in seenIds:
+                continue
+            seenIds.append(key)
             tweetText = tweet['text']
             replies = tweet['replies']
-            prompts.extend([tweetText] * len(replies))
-            responses.extend(replies)
+            if singular and replies:
+                prompts.extend([tweetText])
+                responses.extend(random.choice(replies))
+            else:
+                prompts.extend([tweetText] * len(replies))
+                responses.extend(replies)
             tweets += 1
             print("Tweets:", tweets, "Replies:", len(responses), end='\r')
-
-    zipped = list(zip(prompts, responses))
-    random.shuffle(zipped)
-    prompts, responses = zip(*zipped)
 
     both = np.array(prompts + responses)
 
@@ -161,7 +166,7 @@ def loadTransformerData(path):
     maxLength = max(maxX, maxY)
 
     x = pad_sequences(x_sequences, maxlen=maxLength, padding='post')
-    context = pad_sequences(y_sequences, maxlen=maxLength, padding='post')
+    context = pad_sequences(y_sequences, maxlen=maxLength)
 
     labels = [np.roll(sequence, -1) for sequence in context]
 
