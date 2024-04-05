@@ -34,7 +34,7 @@ class Tokenizer:
         if len(self.wordMap) == 0:
             self.fit(text)
 
-        wordTokens = [['<STR>'] + self.tokenizeSentence(sentence) + ['<END>'] for sentence in text]  
+        wordTokens = [self.tokenizeSentence(sentence) for sentence in text]
             
         sequences = self.translateTokens(wordTokens)
         return sequences
@@ -42,7 +42,6 @@ class Tokenizer:
     def tokenizeSentence(self, text):
         tokens = text.split()
         tokens = [re.sub(r'([^\w\s])', r' \1 ', token) for token in tokens]
-        tokens = [sub_token for token in tokens for sub_token in token.split()]
         return tokens
 
     def translateTokens(self, tokenized_texts):
