@@ -10,7 +10,7 @@ import numpy as np
 def positionalEncoding(length, depth):
     depth = depth / 2
     positions = np.arange(length)[:, np.newaxis]
-    depths = np.arange(depth)[np.newaxis, :]
+    depths = np.arange(depth)[np.newaxis, :] / depth
 
     angle_rates = 1 / (10000 ** depths)
     angle_rads = positions * angle_rates
@@ -66,7 +66,7 @@ class GlobalSelfAttention(BaseAttention):
         attentionOutput = self.multiAttention(
             query=x,
             value=x,
-            key=x,
+            key=x
         )
 
         x = self.add([x, attentionOutput])
@@ -179,7 +179,7 @@ class DecoderLayer(layers.Layer):
 
 class Decoder(layers.Layer):
     def __init__(self, *, numLayers, embeddingDepth, numHeads, feedDepth, vocabSize, dropout=0.1):
-        super().__init__()
+        super(Decoder, self).__init__()
         self.embeddingDepth = embeddingDepth
         self.numLayers = numLayers
 
@@ -236,7 +236,7 @@ def masked_accuracy(label, pred):
 
 
 class Transformer(keras.Model):
-    def __init__(self, *, numLayers, embeddingDepth, numHeads, feedDepth, vocabSize, tokenizer, dropout=0.1):
+    def __init__(self, *, numLayers, embeddingDepth, numHeads, feedDepth, vocabSize, dropout=0.1):
         super().__init__()
         self.encoder = Encoder(numLayers=numLayers, embeddingDepth=embeddingDepth,
                                numHeads=numHeads, feedDepth=feedDepth,
@@ -247,8 +247,6 @@ class Transformer(keras.Model):
                                vocabSize=vocabSize, dropout=dropout)
 
         self.probabilities = layers.Dense(vocabSize)
-
-        self.tokenizer = tokenizer
 
     def call(self, inputs):
         context, x = inputs

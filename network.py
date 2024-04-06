@@ -9,7 +9,9 @@ import os
 import numpy as np
 import re
 
-from keras.preprocessing.sequence import pad_sequences
+from keras_preprocessing.sequence import pad_sequences
+import tensorflow_datasets as tfds
+import tensorflow_text
 
 
 class Tokenizer:
@@ -33,7 +35,6 @@ class Tokenizer:
     def tokenize(self, text):        
         if len(self.wordMap) == 0:
             self.fit(text)
-
         wordTokens = [self.tokenizeSentence(sentence) for sentence in text]
             
         sequences = self.translateTokens(wordTokens)
@@ -142,7 +143,7 @@ def loadTransformerData(path, singular=False):
             replies = tweet['replies']
             if singular and replies:
                 prompts.extend([tweetText])
-                responses.extend(random.choice(replies))
+                responses.extend([random.choice(replies)])
             else:
                 prompts.extend([tweetText] * len(replies))
                 responses.extend(replies)
@@ -160,14 +161,17 @@ def loadTransformerData(path, singular=False):
     x_sequences = tokenizer.tokenize(prompts)
     y_sequences = tokenizer.tokenize(responses)
 
+    x_data = [[1] + sequence + [2] for sequence in x_sequences]
+    y_data = [[1] + sequence for sequence in y_sequences]
+    z_data = [sequence + [2] for sequence in y_sequences]
+
     maxX = max(len(seq) for seq in x_sequences)
     maxY = max(len(seq) for seq in y_sequences)
     maxLength = max(maxX, maxY)
 
-    x = pad_sequences(x_sequences, maxlen=maxLength, padding='post')
-    context = pad_sequences(y_sequences, maxlen=maxLength)
-
-    labels = [np.roll(sequence, -1) for sequence in context]
+    x = pad_sequences(x_data, maxlen=maxLength, padding='post')
+    context = pad_sequences(y_data, maxlen=maxLength, padding='post')
+    labels = pad_sequences(z_data, maxlen=maxLength, padding='post')
 
     print()
 
@@ -182,6 +186,53 @@ def loadTransformerData(path, singular=False):
     dataset = dataset.shuffle(buffer_size=len(x)).batch(batch_size)
 
     return dataset, tokenizer
+
+
+tokenizers = None
+
+MAX_TOKENS=128
+def prepare_batch(pt, en):
+    pt = tokenizers.pt.tokenize(pt)      # Output is ragged.
+    pt = pt[:, :MAX_TOKENS]    # Trim to MAX_TOKENS.
+    pt = pt.to_tensor()  # Convert to 0-padded dense Tensor
+
+    en = tokenizers.en.tokenize(en)
+    en = en[:, :(MAX_TOKENS+1)]
+    en_inputs = en[:, :-1].to_tensor()  # Drop the [END] tokens
+    en_labels = en[:, 1:].to_tensor()   # Drop the [START] tokens
+
+    return (pt, en_inputs), en_labels
+
+
+BUFFER_SIZE = 20000
+BATCH_SIZE = 64
+def make_batches(ds):
+  return (
+      ds
+      .shuffle(BUFFER_SIZE)
+      .batch(BATCH_SIZE)
+      .map(prepare_batch, tf.data.AUTOTUNE)
+      .prefetch(buffer_size=tf.data.AUTOTUNE))
+
+
+def loadStableData(percent=100):
+    global tokenizers
+    examples, metadata = tfds.load('ted_hrlr_translate/pt_to_en', with_info=True, as_supervised=True,
+                                  split='train[:' + str(percent) + '%]')
+    train_examples = examples
+    
+    model_name = 'ted_hrlr_translate_pt_en_converter'
+    tf.keras.utils.get_file(
+        f'{model_name}.zip',
+        f'https://storage.googleapis.com/download.tensorflow.org/models/{model_name}.zip',
+        cache_dir='.', cache_subdir='', extract=True
+    )
+
+    tokenizers = tf.saved_model.load(model_name)
+
+    return make_batches(train_examples), tokenizers
+
+    
 
 
 def LSTMLLM(vocabSize, embeddingDim, maxLength, lstmDepth):
