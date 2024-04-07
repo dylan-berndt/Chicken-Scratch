@@ -135,8 +135,7 @@ class Encoder(layers.Layer):
             EncoderLayer(embeddingDepth=embeddingDepth,
                          numHeads=numHeads,
                          feedDepth=feedDepth,
-                         dropout=dropout
-            )
+                         dropout=dropout)
             for _ in range(numLayers)
         ]
         self.dropout = layers.Dropout(dropout)
@@ -208,6 +207,23 @@ class Decoder(layers.Layer):
         return x
 
 
+class CustomSchedule(tf.keras.optimizers.schedules.LearningRateSchedule):
+    def __init__(self, d_model, warmup_steps=4000):
+        super().__init__()
+
+        self.d_model = d_model
+        self.d_model = tf.cast(self.d_model, tf.float32)
+
+        self.warmup_steps = warmup_steps
+
+    def __call__(self, step):
+        step = tf.cast(step, dtype=tf.float32)
+        arg1 = tf.math.rsqrt(step)
+        arg2 = step * (self.warmup_steps ** -1.5)
+
+        return tf.math.rsqrt(self.d_model) * tf.math.minimum(arg1, arg2)
+
+
 def masked_loss(label, pred):
     mask = label != 0
 
@@ -236,17 +252,17 @@ def masked_accuracy(label, pred):
 
 
 class Transformer(keras.Model):
-    def __init__(self, *, numLayers, embeddingDepth, numHeads, feedDepth, vocabSize, dropout=0.1):
+    def __init__(self, *, numLayers, embeddingDepth, numHeads, feedDepth, inputVocabSize, targetVocabSize, dropout=0.1):
         super().__init__()
         self.encoder = Encoder(numLayers=numLayers, embeddingDepth=embeddingDepth,
                                numHeads=numHeads, feedDepth=feedDepth,
-                               vocabSize=vocabSize, dropout=dropout)
+                               vocabSize=inputVocabSize, dropout=dropout)
 
         self.decoder = Decoder(numLayers=numLayers, embeddingDepth=embeddingDepth,
                                numHeads=numHeads, feedDepth=feedDepth,
-                               vocabSize=vocabSize, dropout=dropout)
+                               vocabSize=targetVocabSize, dropout=dropout)
 
-        self.probabilities = layers.Dense(vocabSize)
+        self.probabilities = layers.Dense(targetVocabSize)
 
     def call(self, inputs):
         context, x = inputs
@@ -264,37 +280,47 @@ class Transformer(keras.Model):
         return logits
 
 
-class Translator(tf.Module):
-    def __init__(self, tokenizer, transformer):
-        self.tokenizer = tokenizer
+class Chat(tf.Module):
+    def __init__(self, tokenizers, transformer):
+        self.inToken = tokenizers[0]
+        self.outToken = tokenizers[1]
         self.transformer = transformer
 
+        start = tf.cast(tf.constant(1)[tf.newaxis], tf.int64)
+        self.context = tf.TensorArray(dtype=tf.int64, size=0, dynamic_size=True)
+        self.context = self.context.write(0, start)
+        self.length = 1
+
+    def respond(self, sentence: str, maxLength: int = 256):
+        return self(sentence, maxLength)
+
     def __call__(self, sentence: str, maxLength: int = 256):
-        tokenized = self.tokenizer.tokenize([sentence])
-        print(tokenized)
-        sentence = tf.data.Dataset.from_tensor_slices(tokenized)
+        tokenized = self.inToken.tokenize([sentence])
+        sentence = tf.constant(tokenized)
 
-        encoderInput = sentence
-
-        start = 1
-        end = 0
+        start = tf.cast(tf.constant(1)[tf.newaxis], tf.int64)
+        end = tf.cast(tf.constant(2)[tf.newaxis], tf.int64)
 
         output_array = tf.TensorArray(dtype=tf.int64, size=0, dynamic_size=True)
         output_array = output_array.write(0, start)
 
         for i in range(maxLength):
-            output = tf.transpose(output_array.stack())
+            output = tf.transpose(self.context.stack())
+            predictions = self.transformer([sentence, output], training=False)
 
-            predictions = self.transformer([encoderInput, output], training=False)
             predictions = predictions[:, -1:, :]
-
             predicted_id = tf.argmax(predictions, axis=-1)
+
+            self.context = self.context.write(self.length, predicted_id[0])
             output_array = output_array.write(i + 1, predicted_id[0])
+            self.length += 1
 
             if predicted_id == end:
                 break
 
-        return output_array.stack()
+        output = tf.transpose(output_array.stack()).numpy()
+        text = self.outToken.deTranslate(output)
+        return " ".join(text[0][1:-1])
 
 
 
