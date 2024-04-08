@@ -309,7 +309,7 @@ class Chat(tf.Module):
             predictions = self.transformer([sentence, output], training=False)
 
             predictions = predictions[:, -1:, :]
-            predicted_id = tf.argmax(predictions, axis=-1)
+            predicted_id = tf.random.categorical(predictions[0], 1)
 
             self.context = self.context.write(self.length, predicted_id[0])
             output_array = output_array.write(i + 1, predicted_id[0])

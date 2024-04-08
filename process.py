@@ -12,8 +12,8 @@ class Tokenizer:
 
     def fit(self, textData):
         tokenized_texts = [self.tokenizeSentence(sentence) for sentence in textData]
-        wordMap = {'<EMP>': 0, '<STR>': 1, '<END>': 2}
-        inverseMap = {0: '<EMP>', 1: '<STR>', 2: '<END>'}
+        wordMap = {'<EMP>': 0, '<STR>': 1, '<END>': 2, "__eou__": 3}
+        inverseMap = {0: '<EMP>', 1: '<STR>', 2: '<END>', 3: "__eou__"}
         for text in tokenized_texts:
             for word in text:
                 if word not in wordMap:
