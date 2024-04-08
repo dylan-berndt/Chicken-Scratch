@@ -45,15 +45,19 @@ class Tokenizer:
         return sequences
 
 
-def process(prompts, responses):
+def process(prompts, responses, tokenizers=None):
     prompts = np.array(prompts)
     responses = np.array(responses)
 
-    inTokenizer = Tokenizer()
-    inTokenizer.fit(prompts)
+    if tokenizers is None:
+        inTokenizer = Tokenizer()
+        inTokenizer.fit(prompts)
 
-    outTokenizer = Tokenizer()
-    outTokenizer.fit(responses)
+        outTokenizer = Tokenizer()
+        outTokenizer.fit(responses)
+    else:
+        inTokenizer = tokenizers[0]
+        outTokenizer = tokenizers[1]
 
     x_sequences = inTokenizer.tokenize(prompts)
     y_sequences = outTokenizer.tokenize(responses)

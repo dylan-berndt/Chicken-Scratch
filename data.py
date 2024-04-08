@@ -48,25 +48,56 @@ def loadTwitterReplyData(path, singular=False):
     return process(context, responses)
 
 
-def splitConversation(line):
-    pass
-
-
 def loadTwitterThreadData(location):
     paths = [location + path for path in os.listdir(location)]
 
+    context, responses = [], []
+
+    for path in paths:
+        if "seen" in path:
+            continue
+        file = open(path)
+        for conversation in file.readlines():
+            lines = conversation.split("__eou__")
+            context.append("__eou__".join(lines[:-2]))
+            responses.append(lines[-2])
+
+    return context, responses
+
 
 def loadConversationData():
-    file = open("DailyDialog.txt")
+    file = open("DailyDialog.txt", encoding='utf-8')
 
     context, responses = [], []
 
     for conversation in file.readlines():
         lines = conversation.split("__eou__")
-        context.append("__eou__".join(lines[:-1]))
-        responses.append(lines[-1])
+        context.append("__eou__".join(lines[:-2]))
+        responses.append(lines[-2])
 
-    return process(context, responses)
+    return context, responses
+
+
+def loadAllConversations(location):
+    twitterThreads = loadTwitterThreadData(location)
+    conversationThreads = loadConversationData()
+
+    print("Conversations:", len(conversationThreads[0]))
+    print("Twitter threads:", len(twitterThreads[0]))
+
+    totalContext = np.array(twitterThreads[0] + conversationThreads[0])
+    totalResponses = np.array(twitterThreads[1] + conversationThreads[1])
+
+    inTokenizer = Tokenizer()
+    inTokenizer.fit(totalContext)
+
+    outTokenizer = Tokenizer()
+    outTokenizer.fit(totalResponses)
+
+    twitterData, tokenizers = process(twitterThreads[0], twitterThreads[1], (inTokenizer, outTokenizer))
+    conversationData, tokenizers = process(conversationThreads[0], conversationThreads[1], (inTokenizer, outTokenizer))
+
+    return twitterData, conversationData, tokenizers
 
 
 # tokenizers = None
